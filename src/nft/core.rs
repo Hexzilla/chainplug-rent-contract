@@ -6,8 +6,8 @@ use near_contract_standards::non_fungible_token::{metadata::TokenMetadata, Token
 
 use near_sdk::{assert_one_yocto, PromiseOrValue, PromiseResult};
 
-const GAS_FOR_RESOLVE_TRANSFER: Gas = Gas(5_000_000_000_000);
-const GAS_FOR_NFT_ON_TRANSFER: Gas = Gas(25_000_000_000_000 + GAS_FOR_RESOLVE_TRANSFER.0);
+const GAS_FOR_RESOLVE_TRANSFER: Gas = Gas::from_tgas(5);
+const GAS_FOR_NFT_ON_TRANSFER: Gas = Gas::from_tgas(30);
 const DATA_IMAGE_SVG: &str = include_str!("data_image_svg.txt");
 
 #[ext_contract(ext_nft_receiver)]
@@ -152,7 +152,6 @@ impl NonFungibleTokenResolver for Contract {
     ) -> bool {
         // Check whether the token should be returned to previous owner
         let should_revert = match env::promise_result(0) {
-            PromiseResult::NotReady => env::abort(),
             PromiseResult::Successful(value) => {
                 if let Ok(true_or_false) = near_sdk::serde_json::from_slice::<bool>(&value) {
                     true_or_false
@@ -212,6 +211,7 @@ mod tests {
     use near_contract_standards::non_fungible_token::core::NonFungibleTokenCore;
     use near_contract_standards::non_fungible_token::TokenId;
 
+    use near_sdk::NearToken;
     use near_sdk::test_utils::{self, accounts, VMContextBuilder};
     use near_sdk::testing_env;
 
@@ -283,7 +283,7 @@ mod tests {
         testing_env!(VMContextBuilder::new()
             .current_account_id(accounts(0))
             .predecessor_account_id(lease_condition.lender_id.clone())
-            .attached_deposit(1)
+            .attached_deposit(NearToken::from_yoctonear(1))
             .build());
 
         // transfer the nft

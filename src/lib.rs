@@ -2,12 +2,12 @@ use std::collections::HashMap;
 
 use near_contract_standards::non_fungible_token::events::NftBurn;
 use near_contract_standards::non_fungible_token::TokenId;
-use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize, to_vec};
 use near_sdk::collections::{LookupMap, UnorderedMap, UnorderedSet};
 use near_sdk::json_types::{Base64VecU8, U128};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{bs58, ext_contract, require, serde_json::json, CryptoHash, PromiseOrValue};
-use near_sdk::{env, near_bindgen, AccountId, BorshStorageKey, Gas, PanicOnDefault, Promise};
+use near_sdk::{env, near_bindgen, AccountId, BorshStorageKey, Gas, PanicOnDefault, Promise, NearToken};
 
 mod externals;
 mod nft;
@@ -17,11 +17,11 @@ use crate::externals::*;
 // Copied from Paras market contract. Will need to be fine-tuned.
 // https://github.com/ParasHQ/paras-marketplace-contract/blob/2dcb9e8b3bc8b9d4135d0f96f0255cd53116a6b4/paras-marketplace-contract/src/lib.rs#L17
 pub const TGAS: u64 = 1_000_000_000_000;
-pub const XCC_GAS: Gas = Gas(5 * TGAS); // cross contract gas
-pub const GAS_FOR_NFT_TRANSFER: Gas = Gas(5 * TGAS);
-pub const BASE_GAS: Gas = Gas(5 * TGAS);
+pub const XCC_GAS: Gas = Gas::from_tgas(5); // cross contract gas
+pub const GAS_FOR_NFT_TRANSFER: Gas = Gas::from_tgas(5);
+pub const BASE_GAS: Gas = Gas::from_tgas(5);
 pub const GAS_FOR_ROYALTIES: Gas = BASE_GAS;
-pub const GAS_FOR_RESOLVE_CLAIM_BACK: Gas = Gas(BASE_GAS.0 * 10u64);
+pub const GAS_FOR_RESOLVE_CLAIM_BACK: Gas = Gas::from_gas(BASE_GAS.as_gas() * 10u64);
 // the tolerance of lease price minus the sum of payout
 // Set it to 1 to avoid linter error
 pub const PAYOUT_DIFF_TORLANCE_YACTO: u128 = 1;
@@ -222,8 +222,8 @@ impl Contract {
 
         // 4. transfer nft to owner
         ext_nft::ext(lease_condition.contract_addr.clone())
-            .with_static_gas(Gas(5 * TGAS))
-            .with_attached_deposit(1)
+            .with_static_gas(Gas::from_tgas(5))
+            .with_attached_deposit(NearToken::from_near(1))
             .nft_transfer(
                 lease_condition.lender_id.clone(),
                 lease_condition.token_id.clone(),
@@ -233,7 +233,7 @@ impl Contract {
             // 5. Pay the rent to lender and royalty to relevant parties. Finally remove the lease.
             .then(
                 ext_self::ext(env::current_account_id())
-                    .with_attached_deposit(0)
+                .with_attached_deposit(NearToken::from_near(0))
                     .with_static_gas(GAS_FOR_RESOLVE_CLAIM_BACK)
                     .resolve_claim_back(lease_id),
             );
@@ -274,8 +274,8 @@ impl Contract {
         amount: U128,
     ) -> Promise {
         ext_ft_core::ext(ft_contract_addr)
-            .with_static_gas(Gas(10 * TGAS))
-            .with_attached_deposit(1)
+            .with_static_gas(Gas::from_tgas(10))
+            .with_attached_deposit(NearToken::from_near(1))
             .ft_transfer(receiver_id, amount, None)
             .as_return()
     }
@@ -439,7 +439,7 @@ impl Contract {
             method_name.clone(),
             args.into(),
             env::attached_deposit(),
-            Gas(5 * TGAS),
+            Gas::from_tgas(5),
         );
     }
 
@@ -564,14 +564,11 @@ impl Contract {
             .lease_ids_by_lender
             .get(&lease_condition.lender_id)
             .unwrap_or_else(|| {
-                UnorderedSet::new(
-                    StorageKey::LeasesIdsByLenderInner {
-                        // get a new unique prefix for the collection by hashing owner
-                        account_id_hash: utils::hash_account_id(&lease_condition.lender_id),
-                    }
-                    .try_to_vec()
-                    .unwrap(),
-                )
+                let storage_key = StorageKey::LeasesIdsByLenderInner {
+                    // get a new unique prefix for the collection by hashing owner
+                    account_id_hash: utils::hash_account_id(&lease_condition.lender_id),
+                };
+                UnorderedSet::new(to_vec(&storage_key).unwrap())
             });
         lease_ids_set.insert(&lease_id);
         self.lease_ids_by_lender
@@ -582,14 +579,11 @@ impl Contract {
             .lease_ids_by_borrower
             .get(&lease_condition.borrower_id)
             .unwrap_or_else(|| {
-                UnorderedSet::new(
-                    StorageKey::LeaseIdsByBorrowerInner {
-                        // get a new unique prefix for the collection by hashing owner
-                        account_id_hash: utils::hash_account_id(&lease_condition.borrower_id),
-                    }
-                    .try_to_vec()
-                    .unwrap(),
-                )
+                let storage_key = StorageKey::LeaseIdsByBorrowerInner {
+                    // get a new unique prefix for the collection by hashing owner
+                    account_id_hash: utils::hash_account_id(&lease_condition.borrower_id),
+                };
+                UnorderedSet::new(to_vec(&storage_key).unwrap())
             });
         lease_ids_set.insert(&lease_id);
         self.lease_ids_by_borrower
@@ -667,13 +661,10 @@ impl Contract {
             .get(new_lender)
             .unwrap_or_else(|| {
                 // if the new lender doesn't have any active lease, create a new record
-                UnorderedSet::new(
-                    StorageKey::ActiveLeaseIdsByOwnerInner {
-                        account_id_hash: utils::hash_account_id(new_lender),
-                    }
-                    .try_to_vec()
-                    .unwrap(),
-                )
+                let storage_key = StorageKey::ActiveLeaseIdsByOwnerInner {
+                    account_id_hash: utils::hash_account_id(new_lender),
+                };
+                UnorderedSet::new(to_vec(&storage_key).unwrap())
             });
         active_lease_ids_set.insert(lease_id);
         self.active_lease_ids_by_lender
@@ -681,13 +672,10 @@ impl Contract {
         // Udpate the index for lease ids by lender for new lender
         let mut lease_ids_set = self.lease_ids_by_lender.get(new_lender).unwrap_or_else(|| {
             // if the receiver doesn;t have any lease, create a new record
-            UnorderedSet::new(
-                StorageKey::LeasesIdsByLenderInner {
-                    account_id_hash: utils::hash_account_id(new_lender),
-                }
-                .try_to_vec()
-                .unwrap(),
-            )
+            let storage_key = StorageKey::LeasesIdsByLenderInner {
+                account_id_hash: utils::hash_account_id(new_lender),
+            };
+            UnorderedSet::new(to_vec(&storage_key).unwrap())
         });
         lease_ids_set.insert(lease_id);
         self.lease_ids_by_lender.insert(new_lender, &lease_ids_set);
@@ -871,7 +859,7 @@ mod tests {
     use super::*;
     use near_sdk::serde_json::json;
     use near_sdk::test_utils::{accounts, VMContextBuilder};
-    use near_sdk::{testing_env, PromiseResult, RuntimeFeesConfig, VMConfig};
+    use near_sdk::{testing_env, PromiseResult, RuntimeFeesConfig, AccountIdRef, test_vm_config};
 
     #[test]
     fn test_new() {
@@ -1055,7 +1043,7 @@ mod tests {
                 .current_account_id(accounts(0))
                 .predecessor_account_id(lease_condition.borrower_id.clone())
                 .build(),
-            VMConfig::test(),
+            test_vm_config(),
             RuntimeFeesConfig::test(),
             HashMap::default(),
             vec![PromiseResult::Successful(Vec::new())],
@@ -1080,7 +1068,7 @@ mod tests {
                 .current_account_id(accounts(0))
                 .predecessor_account_id(lease_condition.borrower_id.clone())
                 .build(),
-            VMConfig::test(),
+            test_vm_config(),
             RuntimeFeesConfig::test(),
             HashMap::default(),
             vec![PromiseResult::Successful(Vec::new())],
@@ -1106,7 +1094,7 @@ mod tests {
                 .current_account_id(accounts(0))
                 .predecessor_account_id(lease_condition.borrower_id.clone())
                 .build(),
-            VMConfig::test(),
+            test_vm_config(),
             RuntimeFeesConfig::test(),
             HashMap::default(),
             vec![PromiseResult::Failed],
@@ -1434,7 +1422,7 @@ mod tests {
             VMContextBuilder::new()
                 .current_account_id(accounts(0))
                 .build(),
-            VMConfig::test(),
+            test_vm_config(),
             RuntimeFeesConfig::test(),
             HashMap::default(),
             vec![PromiseResult::Successful(Vec::new())],
@@ -1446,7 +1434,7 @@ mod tests {
             VMContextBuilder::new()
                 .current_account_id(accounts(0))
                 .build(),
-            VMConfig::test(),
+            test_vm_config(),
             RuntimeFeesConfig::test(),
             HashMap::default(),
             vec![PromiseResult::Successful(Vec::new())],
@@ -1710,7 +1698,7 @@ mod tests {
             .contains_key(&accounts(1).into()));
         assert_eq!(
             contract.lease_map.get(&lease_key).unwrap().lender_id,
-            accounts(1).into()
+            accounts(1)
         );
     }
 
@@ -1730,13 +1718,10 @@ mod tests {
         // update active lease records
         lease_condition.state = LeaseState::Active;
         contract.active_lease_ids.insert(&lease_key);
-        let mut active_lease_ids_set: UnorderedSet<String> = UnorderedSet::new(
-            StorageKey::ActiveLeaseIdsByOwnerInner {
-                account_id_hash: utils::hash_account_id(&lease_condition.lender_id),
-            }
-            .try_to_vec()
-            .unwrap(),
-        );
+        let storage_key = StorageKey::ActiveLeaseIdsByOwnerInner {
+            account_id_hash: utils::hash_account_id(&lease_condition.lender_id),
+        };
+        let mut active_lease_ids_set: UnorderedSet<String> = UnorderedSet::new(to_vec(&storage_key).unwrap());
         active_lease_ids_set.insert(&lease_key);
 
         contract.internal_update_active_lease_lender(
@@ -1817,7 +1802,7 @@ mod tests {
 
     // helper method to generate a dummy AccountId using input name
     pub(crate) fn create_a_dummy_account_id(account_name: &str) -> AccountId {
-        AccountId::new_unchecked(account_name.to_string())
+        account_name.parse().unwrap()
     }
 
     // Helper function create a lease condition based on input

@@ -57,14 +57,11 @@ impl Contract {
             .active_lease_ids_by_lender
             .get(&receiver_id)
             .unwrap_or_else(|| {
-                UnorderedSet::new(
-                    StorageKey::ActiveLeaseIdsByOwnerInner {
-                        // get a new unique prefix for the collection by hashing owner
-                        account_id_hash: utils::hash_account_id(&receiver_id),
-                    }
-                    .try_to_vec()
-                    .unwrap(),
-                )
+                let storage_key = StorageKey::ActiveLeaseIdsByOwnerInner {
+                    // get a new unique prefix for the collection by hashing owner
+                    account_id_hash: utils::hash_account_id(&receiver_id),
+                };
+                UnorderedSet::new(to_vec(&storage_key).unwrap())
             });
 
         active_lease_ids_set.insert(&lease_id);
