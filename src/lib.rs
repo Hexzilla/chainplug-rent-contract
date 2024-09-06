@@ -223,7 +223,7 @@ impl Contract {
         // 4. transfer nft to owner
         ext_nft::ext(lease_condition.contract_addr.clone())
             .with_static_gas(Gas::from_tgas(5))
-            .with_attached_deposit(NearToken::from_near(1))
+            .with_attached_deposit(NearToken::from_yoctonear(1))
             .nft_transfer(
                 lease_condition.lender_id.clone(),
                 lease_condition.token_id.clone(),
@@ -233,7 +233,7 @@ impl Contract {
             // 5. Pay the rent to lender and royalty to relevant parties. Finally remove the lease.
             .then(
                 ext_self::ext(env::current_account_id())
-                .with_attached_deposit(NearToken::from_near(0))
+                .with_attached_deposit(NearToken::from_yoctonear(0))
                     .with_static_gas(GAS_FOR_RESOLVE_CLAIM_BACK)
                     .resolve_claim_back(lease_id),
             );
@@ -275,7 +275,7 @@ impl Contract {
     ) -> Promise {
         ext_ft_core::ext(ft_contract_addr)
             .with_static_gas(Gas::from_tgas(10))
-            .with_attached_deposit(NearToken::from_near(1))
+            .with_attached_deposit(NearToken::from_yoctonear(1))
             .ft_transfer(receiver_id, amount, None)
             .as_return()
     }
