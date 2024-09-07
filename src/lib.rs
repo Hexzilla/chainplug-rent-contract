@@ -859,7 +859,7 @@ mod tests {
     use super::*;
     use near_sdk::serde_json::json;
     use near_sdk::test_utils::{accounts, VMContextBuilder};
-    use near_sdk::{testing_env, PromiseResult, RuntimeFeesConfig, AccountIdRef, test_vm_config};
+    use near_sdk::{testing_env, PromiseResult, RuntimeFeesConfig, test_vm_config};
 
     #[test]
     fn test_new() {
